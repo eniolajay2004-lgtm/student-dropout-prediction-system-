@@ -1,9 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from prediction_logic import StudentDropoutRiskLogic
-import sqlite3
 
-app = FastAPI(title="Student Risk API Engine")
+app = FastAPI(title="Cloudflare D1 Native Risk API")
 
 class StudentInputSchema(BaseModel):
     Student_ID: str = "NEW"
@@ -30,28 +29,34 @@ class StudentInputSchema(BaseModel):
     Medical_Challenges: str
 
 @app.post("/predict")
-async def handle_prediction(data: StudentInputSchema):
-    # Process through our logic calculation layout
+async def handle_prediction(data: StudentInputSchema, request: Request):
+    # 1. Run the risk calculation rules engine
     result = StudentDropoutRiskLogic.evaluate_risk(data.dict())
     
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error_message"])
         
-    # Persist directly into SQLite tables
     try:
-        conn = sqlite3.connect('student_dropout.db')
-        cursor = conn.cursor()
+        # 2. Interact with Cloudflare D1 via the Worker Request Context
+        # Cloudflare automatically attaches your D1 instance onto the request environment
+        d1_database = request.scope["env"].DB
         
-        # Build dynamic queries based on columns that exist in database
-        columns = list(data.dict().keys()) + ['AI_Prediction_Verdict']
+        # Build the dynamic SQL command strings
+        data_dict = data.dict()
+        columns = list(data_dict.keys()) + ['AI_Prediction_Verdict']
+        col_names_str = ", ".join([f"[{c}]" for c in columns])
+        
+        # Build matching question-mark binding parameters for Cloudflare's driver
         placeholders = ", ".join(["?"] * len(columns))
-        values = list(data.dict().values()) + [result["verdict"]]
+        values = list(data_dict.values()) + [result["verdict"]]
         
-        query = f"INSERT INTO student_records ({', '.join(columns)}) VALUES ({placeholders})"
-        cursor.execute(query, values)
-        conn.commit()
-        conn.close()
-    except Exception as db_err:
-        print(f"⚠️ Database tracking warning: {db_err}")
+        query = f"INSERT INTO student_records ({col_names_str}) VALUES ({placeholders})"
+        
+        # Execute the transaction across Cloudflare's edge network
+        await d1_database.prepare(query).bind(*values).run()
+        
+    except Exception as d1_err:
+        # If your local environment doesn't have D1 bound yet, print a warning but return the result
+        print(f"⚠️ Cloudflare D1 Sync Warning: {d1_err}")
         
     return result

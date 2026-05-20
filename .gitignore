@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Inside your .gitignore
+*.db
+migration.sql
+node_modules/
+.wrangler/
