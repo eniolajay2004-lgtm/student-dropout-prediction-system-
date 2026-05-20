@@ -1,39 +1,57 @@
-from js import Response, JSON
-import json
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from prediction_logic import StudentDropoutRiskLogic
+import sqlite3
 
-# Cloudflare looks for an entrypoint function named 'on_fetch'
-async def on_fetch(request, env, ctx):
-    # Determine the URL path requested
-    url = request.url
+app = FastAPI(title="Student Risk API Engine")
+
+class StudentInputSchema(BaseModel):
+    Student_ID: str = "NEW"
+    Matric_No: str = "NEW"
+    Full_Name: str = "Anonymous"
+    Gender: str
+    Age: int
+    State_of_Origin: str
+    Programme: str
+    Entry_Year: int
+    Level: int
+    Semester_GPA: float
+    Cumulative_GPA: float
+    Courses_Attempted: int
+    Courses_Passed: int
+    Attendance_Percentage: float
+    Failed_Courses: int
+    Carryovers: int
+    Scholarship_Holder: str
+    Tuition_Status: str
+    Financial_Stress_Score: int
+    LMS_Login_Frequency: int
+    Assignment_Submission_Rate: float
+    Medical_Challenges: str
+
+@app.post("/predict")
+async def handle_prediction(data: StudentInputSchema):
+    # Process through our logic calculation layout
+    result = StudentDropoutRiskLogic.evaluate_risk(data.dict())
     
-    # Simple Router Implementation
-    if "/api/predict" in url and request.method == "POST":
-        try:
-            # Parse incoming body parameters
-            body_text = await request.text()
-            data = json.loads(body_text)
-            
-            # Example: Interacting with your bound D1 Database 
-            # (Accessible via the binding name defined in wrangler.json)
-            # query = await env.DB.prepare("SELECT * FROM students WHERE Student_ID = ?").bind(data.get("student_id")).first()
-            
-            # Place your predictive execution here (using joblib/scikit-learn)
-            prediction_result = {"status": "success", "dropout_risk": "Low"}
-            
-            return Response.new(
-                json.dumps(prediction_result), 
-                headers={"Content-Type": "application/json"}
-            )
-        except Exception as e:
-            return Response.new(
-                json.dumps({"error": str(e)}), 
-                headers={"Content-Type": "application/json"},
-                status=500
-            )
-
-    # Default fallback response
-    fallback = {"message": "Student Dropout Prediction API Runtime Active"}
-    return Response.new(
-        json.dumps(fallback), 
-        headers={"Content-Type": "application/json"}
-    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error_message"])
+        
+    # Persist directly into SQLite tables
+    try:
+        conn = sqlite3.connect('student_dropout.db')
+        cursor = conn.cursor()
+        
+        # Build dynamic queries based on columns that exist in database
+        columns = list(data.dict().keys()) + ['AI_Prediction_Verdict']
+        placeholders = ", ".join(["?"] * len(columns))
+        values = list(data.dict().values()) + [result["verdict"]]
+        
+        query = f"INSERT INTO student_records ({', '.join(columns)}) VALUES ({placeholders})"
+        cursor.execute(query, values)
+        conn.commit()
+        conn.close()
+    except Exception as db_err:
+        print(f"⚠️ Database tracking warning: {db_err}")
+        
+    return result
