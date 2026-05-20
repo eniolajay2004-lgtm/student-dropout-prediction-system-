@@ -1,0 +1,41 @@
+{
+    "Programme": [
+        "Computer Engineering",
+        "Computer Science",
+        "Cyber Security",
+        "Data Science",
+        "Information Technology",
+        "Software Engineering"
+    ],
+    "State_of_Origin": [
+        "Abuja",
+        "Anambra",
+        "Delta",
+        "Edo",
+        "Ekiti",
+        "Enugu",
+        "Kaduna",
+        "Kano",
+        "Kwara",
+        "Lagos",
+        "Ogun",
+        "Ondo",
+        "Osun",
+        "Oyo",
+        "Rivers"
+    ],
+    "Medical_Challenges": [
+        "Allergies",
+        "Anemia",
+        "Asthma",
+        "Back pain",
+        "Frequent headaches",
+        "Hearing difficulty (mild)",
+        "Malaria history",
+        "Migraine",
+        "Respiratory infection history",
+        "Sickle cell trait",
+        "Typhoid history",
+        "Vision impairment"
+    ]
+}
