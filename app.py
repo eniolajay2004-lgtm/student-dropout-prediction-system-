@@ -524,6 +524,8 @@ def inject_theme() -> None:
             margin-top: 0.24rem;
             color: var(--ink);
             font-size: clamp(1.05rem, 2vw, 1.5rem);
+            word-break: break-word;
+            overflow-wrap: break-word;
         }
 
         .compact-kpi small {
@@ -746,13 +748,11 @@ def html_value(value) -> str:
 
 def render_section(title: str, note: str, kicker: str) -> None:
     st.markdown(
-        f"""
-        <div class="section-head">
-            <div class="eyebrow">{escape(kicker)}</div>
-            <h2>{escape(title)}</h2>
-            <p>{escape(note)}</p>
-        </div>
-        """,
+        f'<div class="section-head">'
+        f'<div><div class="eyebrow">{escape(kicker)}</div>'
+        f'<h2>{escape(title)}</h2></div>'
+        f'<p>{escape(note)}</p>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -1073,16 +1073,12 @@ def render_result(payload: dict, display_name: str = "Selected student") -> None
 
     reasons = risk_reasons(payload)
     reason_html = "".join(
-        f"""
-        <div class="driver-card">
-            <span>{escape(level)}</span>
-            <strong>{escape(title)}</strong>
-            <small>{escape(detail)}</small>
-        </div>
-        """
+        f'<div class="driver-card"><span>{escape(level)}</span>'
+        f'<strong>{escape(title)}</strong>'
+        f'<small>{escape(detail)}</small></div>'
         for title, detail, level in reasons
     )
-    st.markdown(f"<div class='driver-grid'>{reason_html}</div>", unsafe_allow_html=True)
+    st.markdown(f'<div class="driver-grid">{reason_html}</div>', unsafe_allow_html=True)
 
 
 def render_student_profile(row: pd.Series) -> None:
@@ -1096,16 +1092,12 @@ def render_student_profile(row: pd.Series) -> None:
     ]
 
     cards = "".join(
-        f"""
-        <div class="profile-card">
-            <span>{escape(label)}</span>
-            <strong>{html_value(primary)}</strong>
-            <small>{html_value(secondary)}</small>
-        </div>
-        """
+        f'<div class="profile-card"><span>{escape(label)}</span>'
+        f'<strong>{html_value(primary)}</strong>'
+        f'<small>{html_value(secondary)}</small></div>'
         for label, primary, secondary in profile
     )
-    st.markdown(f"<div class='student-profile-grid'>{cards}</div>", unsafe_allow_html=True)
+    st.markdown(f'<div class="student-profile-grid">{cards}</div>', unsafe_allow_html=True)
 
 
 def apply_sidebar_filters(df: pd.DataFrame, profile: dict) -> pd.DataFrame:
@@ -1191,6 +1183,15 @@ def render_overview(df: pd.DataFrame) -> None:
         },
     )
 
+    csv_buffer = io.StringIO()
+    df[DISPLAY_COLUMNS].to_csv(csv_buffer, index=False)
+    st.download_button(
+        "⬇ Export filtered cohort (CSV)",
+        data=csv_buffer.getvalue(),
+        file_name="filtered_cohort_export.csv",
+        mime="text/csv",
+    )
+
 
 def render_risk_intelligence(df: pd.DataFrame) -> None:
     render_section(
@@ -1237,16 +1238,22 @@ def render_risk_intelligence(df: pd.DataFrame) -> None:
         "Root-cause lens",
     )
     driver_cards = "".join(
-        f"""
-        <div class="compact-kpi">
-            <span>{escape(row.Driver)}</span>
-            <strong>{row.Students:,}</strong>
-            <small>{pct(row.Students, len(df))}% of filtered records.</small>
-        </div>
-        """
+        f'<div class="compact-kpi"><span>{escape(row.Driver)}</span>'
+        f'<strong>{row.Students:,}</strong>'
+        f'<small>{pct(row.Students, len(df))}% of filtered records.</small></div>'
         for row in driver_data.itertuples(index=False)
     )
-    st.markdown(f"<div class='micro-grid'>{driver_cards}</div>", unsafe_allow_html=True)
+    st.markdown(f'<div class="micro-grid">{driver_cards}</div>', unsafe_allow_html=True)
+
+    csv_buffer = io.StringIO()
+    queue_export = df[df["Risk_Index"] >= 25][DISPLAY_COLUMNS + ["Support_Priority"]]
+    queue_export.to_csv(csv_buffer, index=False)
+    st.download_button(
+        "⬇ Export risk queue (CSV)",
+        data=csv_buffer.getvalue(),
+        file_name="risk_queue_export.csv",
+        mime="text/csv",
+    )
 
 
 def render_student_console(df: pd.DataFrame, profile: dict) -> None:
@@ -1401,6 +1408,23 @@ def render_data_intake(df: pd.DataFrame | None) -> None:
             return
 
         st.success(f"Validated {len(uploaded_df):,} incoming student records.")
+
+        preview_enriched = enrich_with_risk(clean_dataset(uploaded_df))
+        if preview_enriched is not None and not preview_enriched.empty:
+            p_total = len(preview_enriched)
+            p_high = int((preview_enriched["Risk_Index"] >= 50).sum())
+            p_watch = int((preview_enriched["Risk_Index"] >= 25).sum()) - p_high
+            p_stable = p_total - p_high - p_watch
+            st.markdown(
+                f'<div class="micro-grid">'
+                f'<div class="compact-kpi"><span>Incoming records</span><strong>{p_total:,}</strong><small>Total validated rows.</small></div>'
+                f'<div class="compact-kpi" style="border-top:4px solid var(--red)"><span>High risk</span><strong>{p_high:,}</strong><small>{pct(p_high, p_total)}% need immediate attention.</small></div>'
+                f'<div class="compact-kpi" style="border-top:4px solid var(--amber)"><span>Watch list</span><strong>{p_watch:,}</strong><small>{pct(p_watch, p_total)}% require monitoring.</small></div>'
+                f'<div class="compact-kpi" style="border-top:4px solid var(--green)"><span>Stable</span><strong>{p_stable:,}</strong><small>{pct(p_stable, p_total)}% routine follow-up.</small></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
         st.dataframe(uploaded_df[REQUIRED_COLUMNS].head(20), width="stretch", hide_index=True)
 
         if st.button("Commit records to registry", type="primary", width="stretch"):
